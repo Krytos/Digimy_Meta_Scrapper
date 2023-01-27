@@ -83,6 +83,8 @@ async def main():
                         progress.update(task, advance=1)
                     progress.update(task, completed=True)
                     await asyncio.sleep(0.5)
+                with open(f"{datei_name}.csv", "r", encoding='utf-8') as f:
+                    st.download_button('Download CSV', f, f"{datei_name}.csv")
     print(f"Finished in {perf_counter() - start} seconds")
 
 
