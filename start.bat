@@ -12,6 +12,7 @@ echo ======================================================================
 echo Checking installed requirements...
 echo ======================================================================
 echo:
+python -m pip install --upgrade pip
 python -m pip install -q -r requirements.txt
 echo ======================================================================
 echo Done!

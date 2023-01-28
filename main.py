@@ -103,10 +103,6 @@ async def main():
                     writer.writerows(data)
                 while not os.path.exists(f"{datei_name}.json") and not os.path.exists(f"{datei_name}.csv"):
                     await asyncio.sleep(0.1)
-                with open(f"{datei_name}.json", "r", encoding='utf-8') as f:
-                    st.download_button('Download JSON', f, f"{datei_name}.json")
-                with open(f"{datei_name}.csv", "r", encoding='utf-8') as f:
-                    st.download_button('Download CSV', f, f"{datei_name}.csv")
     print(f"Finished in {perf_counter() - start} seconds")
 
 total_tasks = 0
@@ -127,3 +123,10 @@ datei_name = st.text_input("Dateiname", "results")
 my_bar = st.progress(0)
 # asyncio.run(main())
 button = st.button("Start scrapping", on_click=lambda: asyncio.run(main()))
+try:
+    with open(f"{datei_name}.json", "r", encoding='utf-8') as f:
+        st.download_button('Download JSON', f, f"{datei_name}.json")
+    with open(f"{datei_name}.csv", "r", encoding='utf-8') as f:
+        st.download_button('Download CSV', f, f"{datei_name}.csv")
+except FileNotFoundError:
+    pass
