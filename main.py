@@ -7,10 +7,9 @@ from time import perf_counter
 import aiohttp
 import streamlit as st
 from bs4 import BeautifulSoup
-from rich.progress import Progress
 
 
-async def fetch_metadata(session, item_link: str, progress, task: int, data):
+async def fetch_metadata(session, item_link: str, data):
     async with session.get(item_link) as response:
         soup = BeautifulSoup(await response.text(), 'html.parser')
         page_title = soup.find("meta", attrs={"property": "og:title"})["content"].replace("&nbsp;", " ").replace('"',
@@ -28,15 +27,13 @@ async def fetch_metadata(session, item_link: str, progress, task: int, data):
                 "produkt beschreibung": produkt_beschreibung
             }
         )
-        progress.start_task(task)
-        progress.update(task, advance=1)
         try:
             my_bar.progress(int(100 / total_tasks * (total_tasks - len(asyncio.all_tasks()) + 1)))
         except Exception:
             pass
 
 
-async def fetch_items(session, url: str, tg: asyncio, progress, task, data):
+async def fetch_items(session, url: str, tg: asyncio, data):
     global total_tasks
     async with session.get(url) as response:
         soup = BeautifulSoup(await response.text(), 'html.parser')
@@ -51,19 +48,17 @@ async def fetch_items(session, url: str, tg: asyncio, progress, task, data):
         for item in content:
             try:
                 item_link = item.find('a')['href']
-                tg.create_task(fetch_metadata(session, item_link, progress, task, data))
+                tg.create_task(fetch_metadata(session, item_link, data))
                 await add_tasks()
-                progress.update(task, total=total_tasks)
             except TypeError:
                 continue
 
 
-async def fetch_pages_for_link(session, link: str, tg: asyncio, progress, task, data):
+async def fetch_pages_for_link(session, link: str, tg: asyncio, data):
     for i in range(1, pages_to_scrap + 1):
         url = link + '?p=' + str(i)
-        tg.create_task(fetch_items(session, url, tg, progress, task, data))
+        tg.create_task(fetch_items(session, url, tg, data))
         await add_tasks()
-        progress.update(task, advance=1, total=total_tasks)
 
 
 async def add_tasks():
@@ -74,35 +69,33 @@ async def add_tasks():
 async def main():
     start = perf_counter()
     data = []
-    with Progress() as progress:
-        task = progress.add_task("[red]Scrapping...", start=False)
-        async with aiohttp.ClientSession() as session:
-            async with session.get(base_url) as html:
-                soup = BeautifulSoup(await html.text(), 'html.parser')
+    # with Progress() as progress:
+    #     task = progress.add_task("[red]Scrapping...", start=False)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(base_url) as html:
+            soup = BeautifulSoup(await html.text(), 'html.parser')
 
-                if categories_to_scrap == []:
-                    navigation_list = soup.find('ul', class_='navigation--list container')
-                    links = [a['href'] for a in navigation_list.find_all('a')]
-                else:
-                    links = []
-                    for i, category in enumerate(url_extensions[1]):
-                        if category in categories_to_scrap:
-                            links.append(base_url + url_extensions[0][i])
+            if categories_to_scrap == []:
+                navigation_list = soup.find('ul', class_='navigation--list container')
+                links = [a['href'] for a in navigation_list.find_all('a')]
+            else:
+                links = []
+                for i, category in enumerate(url_extensions[1]):
+                    if category in categories_to_scrap:
+                        links.append(base_url + url_extensions[0][i])
 
-                async with asyncio.TaskGroup() as tg:
-                    for link in links:
-                        tg.create_task(fetch_pages_for_link(session, link, tg, progress, task, data))
-                        progress.update(task, advance=1)
-                    progress.update(task, completed=True)
-                    await asyncio.sleep(0.5)
-                with open(f"{datei_name}.json", "w+", encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=4)
-                with open(f"{datei_name}.csv", "w", encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=data[0].keys(), escapechar='\\', doublequote=False)
-                    writer.writeheader()
-                    writer.writerows(data)
-                while not os.path.exists(f"{datei_name}.json") and not os.path.exists(f"{datei_name}.csv"):
-                    await asyncio.sleep(0.1)
+            async with asyncio.TaskGroup() as tg:
+                for link in links:
+                    tg.create_task(fetch_pages_for_link(session, link, tg, data))
+                await asyncio.sleep(0.5)
+            with open(f"{datei_name}.json", "w+", encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            with open(f"{datei_name}.csv", "w", encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=data[0].keys(), escapechar='\\', doublequote=False)
+                writer.writeheader()
+                writer.writerows(data)
+            while not os.path.exists(f"{datei_name}.json") and not os.path.exists(f"{datei_name}.csv"):
+                await asyncio.sleep(0.1)
     print(f"Finished in {perf_counter() - start} seconds")
 
 total_tasks = 0
