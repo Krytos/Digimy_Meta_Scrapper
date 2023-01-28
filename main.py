@@ -1,5 +1,7 @@
 import asyncio
 import csv
+import json
+import os
 from time import perf_counter
 
 import aiohttp
@@ -8,15 +10,24 @@ from bs4 import BeautifulSoup
 from rich.progress import Progress
 
 
-async def fetch_metadata(session, item_link, progress, task):
+async def fetch_metadata(session, item_link: str, progress, task: int, data):
     async with session.get(item_link) as response:
         soup = BeautifulSoup(await response.text(), 'html.parser')
-        page_title = soup.find("meta", attrs={"property": "og:title"})["content"].replace(",", "-").replace("|", "-")
-        page_description = soup.find("meta", attrs={"name": "description"})["content"].replace(",", "-").replace("|",
-                                                                                                                 "-")
-        with open(f"{datei_name}.csv", "a", encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([page_title, page_description])
+        page_title = soup.find("meta", attrs={"property": "og:title"})["content"].replace("&nbsp;", " ").replace('"',
+                                                                                                                 "'")
+        page_description = soup.find("meta", attrs={"name": "description"})["content"].replace("&nbsp;", " ").replace(
+            '"', "'")
+        produkt_beschreibung = [p.text for p in soup.find('div', class_='vsLeft')]
+        produkt_beschreibung = [p.strip().replace("&nbsp;", " ").replace('"', "'") for p in produkt_beschreibung if
+                                p != ' ']
+        produkt_beschreibung = " ".join(produkt_beschreibung[1:-3]).replace("&nbsp;", " ").replace("&nbsp", " ")
+        data.append(
+            {
+                "meta title": page_title,
+                "meta description": page_description,
+                "produkt beschreibung": produkt_beschreibung
+            }
+        )
         progress.start_task(task)
         progress.update(task, advance=1)
         try:
@@ -25,7 +36,7 @@ async def fetch_metadata(session, item_link, progress, task):
             pass
 
 
-async def fetch_items(session, url, tg, progress, task):
+async def fetch_items(session, url: str, tg: asyncio, progress, task, data):
     global total_tasks
     async with session.get(url) as response:
         soup = BeautifulSoup(await response.text(), 'html.parser')
@@ -40,19 +51,19 @@ async def fetch_items(session, url, tg, progress, task):
         for item in content:
             try:
                 item_link = item.find('a')['href']
-                tg.create_task(fetch_metadata(session, item_link, progress, task))
+                tg.create_task(fetch_metadata(session, item_link, progress, task, data))
                 await add_tasks()
                 progress.update(task, total=total_tasks)
             except TypeError:
                 continue
 
 
-async def fetch_pages_for_link(session, link, tg, progress, task):
+async def fetch_pages_for_link(session, link: str, tg: asyncio, progress, task, data):
     for i in range(1, pages_to_scrap + 1):
         url = link + '?p=' + str(i)
-        tg.create_task(fetch_items(session, url, tg, progress, task))
+        tg.create_task(fetch_items(session, url, tg, progress, task, data))
         await add_tasks()
-        progress.update(task, total=total_tasks, advance=1)
+        progress.update(task, advance=1, total=total_tasks)
 
 
 async def add_tasks():
@@ -62,6 +73,7 @@ async def add_tasks():
 
 async def main():
     start = perf_counter()
+    data = []
     with Progress() as progress:
         task = progress.add_task("[red]Scrapping...", start=False)
         async with aiohttp.ClientSession() as session:
@@ -79,14 +91,23 @@ async def main():
 
                 async with asyncio.TaskGroup() as tg:
                     for link in links:
-                        tg.create_task(fetch_pages_for_link(session, link, tg, progress, task))
+                        tg.create_task(fetch_pages_for_link(session, link, tg, progress, task, data))
                         progress.update(task, advance=1)
                     progress.update(task, completed=True)
                     await asyncio.sleep(0.5)
+                with open(f"{datei_name}.json", "w+", encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+                with open(f"{datei_name}.csv", "w", encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=data[0].keys(), escapechar='\\', doublequote=False)
+                    writer.writeheader()
+                    writer.writerows(data)
+                while not os.path.exists(f"{datei_name}.json") and not os.path.exists(f"{datei_name}.csv"):
+                    await asyncio.sleep(0.1)
+                with open(f"{datei_name}.json", "r", encoding='utf-8') as f:
+                    st.download_button('Download JSON', f, f"{datei_name}.json")
                 with open(f"{datei_name}.csv", "r", encoding='utf-8') as f:
                     st.download_button('Download CSV', f, f"{datei_name}.csv")
     print(f"Finished in {perf_counter() - start} seconds")
-
 
 total_tasks = 0
 base_url = "https://www.vinoscout.de/"
@@ -99,7 +120,7 @@ categories_to_scrap = st.multiselect("Kategoregien zu scrappen",
                                      ["Rotwein", "Weißwein", "Roséwein", "Schaumwein", "Portwein", "Sherry",
                                       "Spirituosen", "Feinkost", "Cidre", "Alkoholfreie Getränke", "Länder",
                                       "Rebsorten"])
-# categories_to_scrap = ["Roséwein"]
+# categories_to_scrap = ["Spirituosen"]
 pages_to_scrap = st.slider("Pages to scrap", 1, 100, 50)
 # pages_to_scrap = 50
 datei_name = st.text_input("Dateiname", "results")

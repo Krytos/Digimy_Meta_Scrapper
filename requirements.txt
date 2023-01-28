@@ -1,0 +1,4 @@
+aiohttp~=3.8.3
+streamlit~=1.17.0
+beautifulsoup4~=4.11.1
+rich~=12.6.0
