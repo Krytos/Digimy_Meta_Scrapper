@@ -120,7 +120,7 @@ categories_to_scrap = st.multiselect("Kategoregien zu scrappen",
 pages_to_scrap = st.slider("Pages to scrap", 1, 100, 50)
 datei_name = st.text_input("Dateiname", "results")
 my_bar = st.progress(0)
-button = st.button("Start scrapping", on_click=asyncio.run, args=(main(),))
+button = st.button("Start scrapping", on_click=on_click=lambda: asyncio.run(main()))
 
 try:
     with open(f"{datei_name}.json", "r", encoding='utf-8') as f:
